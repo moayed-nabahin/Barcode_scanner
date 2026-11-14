@@ -1,0 +1,839 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Price Scanner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: one narrow column, like a shelf label on a phone. Camera on top, price tag under it, product list last. */
+:root{
+  --bg:#f4f3ee; --card:#ffffff; --ink:#15201b; --muted:#5a685f; --line:#dad8cc;
+  --accent:#0f6b4b; --accent-ink:#ffffff; --tag:#ffd426; --tag-ink:#1a1500;
+  --danger:#b3261e; --video:#0b100e;
+  --display:"Space Grotesk","Segoe UI",system-ui,sans-serif;
+  --body:"Inter","Segoe UI",system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1512; --card:#18211c; --ink:#eef2ee; --muted:#93a39a; --line:#2a3630;
+    --accent:#3ecf93; --accent-ink:#06150e; --tag:#ffd426; --tag-ink:#1a1500; --danger:#ff8a80;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1512; --card:#18211c; --ink:#eef2ee; --muted:#93a39a; --line:#2a3630;
+  --accent:#3ecf93; --accent-ink:#06150e; --tag:#ffd426; --tag-ink:#1a1500; --danger:#ff8a80;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--bg); color:var(--ink); font:16px/1.45 var(--body);
+  padding-block:max(16px,env(safe-area-inset-top,0px)) max(24px,env(safe-area-inset-bottom,0px));
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+}
+main{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1{font:700 1.5rem/1.1 var(--display);margin:0;letter-spacing:-.01em}
+h2{font:700 1.05rem/1.2 var(--display);margin:0}
+.top{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.sub{color:var(--muted);font-size:.875rem;margin:0}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+.view{
+  position:relative;background:var(--video);border-radius:14px;overflow:hidden;
+  aspect-ratio:4/3;max-width:100%;display:grid;place-items:center;color:#cfd8d2;
+}
+.view video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.view .idle{position:relative;text-align:center;padding:24px;max-width:30ch}
+.view .idle strong{display:block;font:700 1.1rem var(--display);color:#fff;margin-bottom:4px}
+
+.row{display:flex;flex-wrap:wrap;gap:8px}
+.btn{
+  min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);
+  background:var(--card);font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:8px;
+}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);flex:1 1 160px}
+.btn.danger{color:var(--danger)}
+.btn.small{min-height:36px;padding:0 12px;font-size:.875rem}
+.btn[disabled]{opacity:.5;cursor:default}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field label{font-size:.8rem;font-weight:600;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.field input{
+  min-height:44px;padding:0 12px;border-radius:10px;border:1px solid var(--line);
+  background:var(--bg);width:100%;min-width:0;
+}
+.inline{display:flex;gap:8px;align-items:flex-end}
+.inline .field{flex:1}
+
+/* shelf label */
+.label{border-radius:12px;overflow:hidden;border:1px solid var(--line);background:var(--card)}
+.label .name{padding:14px 16px 6px;font:600 1.1rem/1.25 var(--display)}
+.label .code{padding:0 16px 12px;font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums;letter-spacing:.06em}
+.label .price{
+  background:var(--tag);color:var(--tag-ink);padding:10px 16px;display:flex;align-items:baseline;gap:6px;
+  font:700 clamp(2.6rem,14vw,3.6rem)/1 var(--display);font-variant-numeric:tabular-nums;
+}
+.label .price small{font-size:.45em;font-weight:700}
+.notice{font-size:.9rem;color:var(--muted);margin:0}
+.notice.err{color:var(--danger)}
+
+.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.list li{display:flex;align-items:center;gap:8px;border-top:1px solid var(--line);padding:8px 0}
+.list li:first-child{border-top:0}
+.list .pick{flex:1;min-width:0;text-align:left;background:none;border:0;padding:4px 0;display:flex;flex-direction:column}
+.list .pick span:first-child{font-weight:600;overflow-wrap:anywhere}
+.list .pick span:last-child{font-size:.8rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.list .p{font:700 1rem var(--display);font-variant-numeric:tabular-nums;white-space:nowrap}
+.choice{display:flex;flex-wrap:wrap;gap:6px 16px}
+.choice label{display:flex;align-items:center;gap:6px;font-size:.9rem}
+.preview{margin:0;padding:12px;border-radius:10px;background:var(--bg);border:1px solid var(--line);font-size:.9rem;overflow-wrap:anywhere}
+.preview ul{margin:6px 0 0;padding-left:18px}
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>Price Scanner</h1>
+    <p class="sub" id="count"></p>
+  </div>
+
+  <div class="view" id="view">
+    <video id="video" playsinline muted hidden></video>
+    <div class="idle" id="idle">
+      <strong>Point at a barcode</strong>
+      The camera opens automatically. Point it at the barcode, about 10 to 20 cm away.
+    </div>
+  </div>
+
+  <div class="row">
+    <button class="btn primary" id="start" type="button">Start camera</button>
+    <button class="btn" id="torch" type="button" hidden>Light</button>
+    <button class="btn" id="zoom" type="button" hidden>Zoom 1×</button>
+    <button class="btn" id="photoBtn" type="button">Take photo</button>
+    <input type="file" id="photo" accept="image/*" capture="environment" hidden>
+  </div>
+  <p class="notice" id="status" role="status"></p>
+
+  <form class="inline" id="manual">
+    <div class="field">
+      <label for="code">Type a barcode</label>
+      <input id="code" inputmode="numeric" autocomplete="off" placeholder="e.g. 2000000000015">
+    </div>
+    <button class="btn" type="submit">Look up</button>
+  </form>
+
+  <section id="result" aria-live="polite"></section>
+
+  <section class="card" id="admin" aria-label="Admin"></section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+(function(){
+  "use strict";
+  var CURRENCY = "₪";
+
+  function ean13(body){
+    var s = 0;
+    for (var i = 0; i < 12; i++) s += Number(body[i]) * (i % 2 ? 3 : 1);
+    return body + ((10 - s % 10) % 10);
+  }
+  // Store-internal EAN-13 codes start with 20 to 29, so these cannot clash with real products.
+  var SAMPLE = [
+    [ean13("200000000001"), "Olive oil, 750 ml", 32.9],
+    [ean13("200000000002"), "White rice, 1 kg", 8.5],
+    [ean13("200000000003"), "Whole milk, 1 l", 6.2],
+    [ean13("200000000004"), "Sliced bread", 7.0],
+    [ean13("200000000005"), "Tomato paste, 400 g", 4.9],
+    [ean13("200000000006"), "Black tea, 100 bags", 14.5]
+  ];
+
+  function api(method, path, body, pw){
+    var opt = { method: method, headers: { "Content-Type": "application/json" }, cache: "no-store" };
+    if (pw) opt.headers["x-admin-password"] = pw;
+    if (body !== undefined) opt.body = JSON.stringify(body);
+    return fetch(path, opt).then(function(r){
+      return r.json().catch(function(){ return {}; }).then(function(j){
+        if (!r.ok) { var e = new Error(j.error || "Server error"); e.status = r.status; throw e; }
+        return j;
+      });
+    });
+  }
+  function netMsg(e){
+    return e && e.status ? e.message : "Cannot reach the price server. Check the internet connection and try again.";
+  }
+
+  var $ = function(id){ return document.getElementById(id); };
+  function h(tag, props, kids){
+    var n = document.createElement(tag);
+    Object.keys(props || {}).forEach(function(k){
+      if (k === "text") n.textContent = props[k];
+      else if (k === "class") n.className = props[k];
+      else if (k.slice(0,2) === "on") n.addEventListener(k.slice(2), props[k]);
+      else n.setAttribute(k, props[k]);
+    });
+    (kids || []).forEach(function(c){ if (c) n.appendChild(c); });
+    return n;
+  }
+  function money(v){ return Number(v).toFixed(2); }
+  function digits(s){ return String(s).replace(/\D+/g, ""); }
+  /* ---------- rendering ---------- */
+  function setStatus(msg, isErr){
+    var s = $("status");
+    s.textContent = msg || "";
+    s.className = "notice" + (isErr ? " err" : "");
+  }
+
+  function renderList(){
+    api("GET", "/api/info").then(function(j){
+      $("count").textContent = j.count + (j.count === 1 ? " product" : " products");
+    }).catch(function(){ $("count").textContent = ""; });
+  }
+
+  function notFound(code){
+    var box = $("result");
+    box.textContent = "";
+    box.appendChild(h("div", { class: "card" }, [
+      h("h2", { text: "Price not found" }),
+      h("p", { class: "notice", text: "Barcode " + digits(code) + " is not in the price list. Please ask a staff member." }),
+      h("div", { class: "row" }, [h("button", { class: "btn primary", type: "button", onclick: resumeScan, text: "Scan next" })])
+    ]));
+  }
+
+  function showCode(code){
+    var d = digits(code);
+    if (!d) return;
+    var box = $("result");
+    box.textContent = "";
+    box.appendChild(h("p", { class: "notice", text: "Looking up " + d + "…" }));
+    api("GET", "/api/product/" + encodeURIComponent(d)).then(function(it){
+      showFound(it);
+    }).catch(function(e){
+      if (e.status === 404) { if (admin) showForm(d, null); else notFound(d); }
+      else { box.textContent = ""; setStatus(netMsg(e), true); }
+    });
+  }
+
+  function showFound(it){
+    var box = $("result");
+    box.textContent = "";
+    box.appendChild(h("div", { class: "label" }, [
+      h("div", { class: "name", text: it.name }),
+      h("div", { class: "code", text: it.code }),
+      h("div", { class: "price" }, [h("small", { text: CURRENCY }), document.createTextNode(money(it.price))])
+    ]));
+    box.appendChild(h("div", { class: "row", style: "margin-top:8px" }, [
+      h("button", { class: "btn primary", type: "button", onclick: resumeScan, text: "Scan next" }),
+      admin ? h("button", { class: "btn", type: "button", onclick: function(){ showForm(it.code, it); }, text: "Edit" }) : null
+    ]));
+  }
+
+  function showForm(code, existing){
+    var box = $("result");
+    box.textContent = "";
+    var name = h("input", { id: "fName", autocomplete: "off", placeholder: "Product name" });
+    var price = h("input", { id: "fPrice", inputmode: "decimal", autocomplete: "off", placeholder: "0.00" });
+    var codeIn = h("input", { id: "fCode", inputmode: "numeric", autocomplete: "off" });
+    codeIn.value = code || "";
+    if (existing) { name.value = existing.name; price.value = money(existing.price); }
+    var err = h("p", { class: "notice err", text: "" });
+    var form = h("form", { class: "card", onsubmit: function(e){
+      e.preventDefault();
+      var c = digits(codeIn.value), n = name.value.trim(), pr = parseFloat(String(price.value).replace(",", "."));
+      if (!c || !n || !isFinite(pr) || pr < 0) { err.textContent = "Enter a barcode, a name and a price."; return; }
+      err.textContent = "Saving…";
+      api("POST", "/api/admin/product", { code: c, name: n, price: pr }, adminPw).then(function(it){
+        renderList(); showFound(it);
+      }).catch(function(e){ err.textContent = netMsg(e); });
+    } }, [
+      h("h2", { text: existing ? "Edit product" : (code ? "Not in the list yet" : "Add a product") }),
+      code && !existing ? h("p", { class: "notice", text: "Enter the shelf price to save this product." }) : null,
+      h("div", { class: "field" }, [h("label", { for: "fCode", text: "Barcode" }), codeIn]),
+      h("div", { class: "field" }, [h("label", { for: "fName", text: "Name" }), name]),
+      h("div", { class: "field" }, [h("label", { for: "fPrice", text: "Price (" + CURRENCY + ")" }), price]),
+      err,
+      h("div", { class: "row" }, [
+        h("button", { class: "btn primary", type: "submit", text: "Save" }),
+        existing ? h("button", { class: "btn danger", type: "button", text: "Delete", onclick: function(){
+          api("DELETE", "/api/admin/product/" + encodeURIComponent(code), undefined, adminPw).then(function(){
+            renderList(); box.textContent = "";
+          }).catch(function(e){ err.textContent = netMsg(e); });
+        } }) : null,
+        h("button", { class: "btn", type: "button", text: "Cancel", onclick: function(){ box.textContent = ""; } })
+      ])
+    ]);
+    box.appendChild(form);
+    (code ? (existing ? name : name) : codeIn).focus({ preventScroll: false });
+  }
+
+  /* ---------- decoding ---------- */
+  var detector = null, zxReader = null, zxHints = null;
+  function initDecoders(){
+    if ("BarcodeDetector" in window) {
+      var wanted = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "itf"];
+      var make = function(f){ try { detector = new window.BarcodeDetector({ formats: f }); } catch (e) { detector = null; } };
+      if (window.BarcodeDetector.getSupportedFormats) {
+        window.BarcodeDetector.getSupportedFormats().then(function(sup){
+          var f = wanted.filter(function(x){ return sup.indexOf(x) !== -1; });
+          make(f.length ? f : undefined);
+        }).catch(function(){ make(undefined); });
+      } else make(undefined);
+    }
+  }
+  function zx(){
+    if (!window.ZXing) return null;
+    if (!zxReader) {
+      var Z = window.ZXing;
+      zxHints = new Map();
+      zxHints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [
+        Z.BarcodeFormat.EAN_13, Z.BarcodeFormat.EAN_8, Z.BarcodeFormat.UPC_A,
+        Z.BarcodeFormat.UPC_E, Z.BarcodeFormat.CODE_128, Z.BarcodeFormat.CODE_39
+      ]);
+      zxHints.set(Z.DecodeHintType.TRY_HARDER, true);
+      zxReader = new Z.MultiFormatReader();
+    }
+    return zxReader;
+  }
+  function decodeCanvasZX(canvas){
+    var r = zx();
+    if (!r) return null;
+    var Z = window.ZXing;
+    try {
+      var bmp = new Z.BinaryBitmap(new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(canvas)));
+      return r.decode(bmp, zxHints).getText();
+    } catch (e) { return null; }
+  }
+  var work = document.createElement("canvas");
+  function drawTo(src, w, h2, maxW){
+    var k = Math.min(1, maxW / w);
+    work.width = Math.round(w * k); work.height = Math.round(h2 * k);
+    work.getContext("2d", { willReadFrequently: true }).drawImage(src, 0, 0, work.width, work.height);
+    return work;
+  }
+
+  /* ---------- live camera ---------- */
+  var stream = null, track = null, scanning = false, opening = false, wasOn = false;
+  var cand = "", candAt = 0, startedAt = 0, frameN = 0, busy = false, hintShown = false;
+  var zoomLevels = [], zoomIdx = 0, pauseTimer = null, actx = null;
+
+  // Reject misreads: EAN-13 and UPC-A carry a check digit.
+  function validCode(c){
+    if (!/^\d+$/.test(c)) return true;
+    if (c.length !== 12 && c.length !== 13) return true;
+    var s = 0, w = 3;
+    for (var i = c.length - 2; i >= 0; i--) { s += Number(c[i]) * w; w = 4 - w; }
+    return (10 - s % 10) % 10 === Number(c[c.length - 1]);
+  }
+
+  function beep(){
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.resume) actx.resume();
+      var o = actx.createOscillator(), g = actx.createGain();
+      o.frequency.value = 1100; g.gain.value = 0.08;
+      o.connect(g); g.connect(actx.destination);
+      o.start(); o.stop(actx.currentTime + 0.09);
+    } catch (e) {}
+  }
+
+  function updateBtn(){
+    $("start").textContent = !stream ? "Start camera" : (scanning ? "Stop camera" : "Scan next");
+  }
+
+  function stopCamera(){
+    scanning = false; opening = false;
+    if (pauseTimer) { clearTimeout(pauseTimer); pauseTimer = null; }
+    if (stream) stream.getTracks().forEach(function(t){ t.stop(); });
+    stream = null; track = null;
+    $("video").hidden = true; $("idle").hidden = false;
+    $("torch").hidden = true; $("zoom").hidden = true;
+    updateBtn();
+  }
+
+  function toggleCamera(){
+    if (!stream) startCamera();
+    else if (scanning) { stopCamera(); setStatus(""); }
+    else resumeScan();
+  }
+
+  function resumeScan(){
+    if (!stream) { startCamera(); return; }
+    if (pauseTimer) { clearTimeout(pauseTimer); pauseTimer = null; }
+    var v = $("video");
+    try { v.play(); } catch (e) {}
+    scanning = true; cand = ""; startedAt = performance.now(); hintShown = false;
+    $("result").textContent = "";
+    setStatus("Point the camera at the barcode.");
+    updateBtn();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    requestAnimationFrame(tick);
+  }
+
+  function tune(){
+    var caps = {};
+    try { caps = track.getCapabilities ? track.getCapabilities() : {}; } catch (e) {}
+    if (caps.focusMode && caps.focusMode.indexOf("continuous") !== -1) {
+      track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }).catch(function(){});
+    }
+    $("torch").hidden = !caps.torch;
+    $("torch").setAttribute("data-on", "0"); $("torch").textContent = "Light";
+    zoomLevels = []; zoomIdx = 0;
+    if (caps.zoom && caps.zoom.max > caps.zoom.min) {
+      [1, 2, 3].forEach(function(z){
+        var zz = Math.min(Math.max(z, caps.zoom.min), caps.zoom.max);
+        if (zoomLevels.indexOf(zz) === -1) zoomLevels.push(zz);
+      });
+    }
+    $("zoom").hidden = zoomLevels.length < 2;
+    if (zoomLevels.length) $("zoom").textContent = "Zoom " + Math.round(zoomLevels[0] * 10) / 10 + "×";
+  }
+
+  function startCamera(){
+    if (stream) { resumeScan(); return; }
+    if (opening) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.isSecureContext) {
+      setStatus("Live camera needs a secure page (https or localhost). Use Take photo or type the barcode instead.", true);
+      return;
+    }
+    opening = true;
+    setStatus("Opening camera…");
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 4096 }, height: { ideal: 2160 } },
+      audio: false
+    }).then(function(s){
+      opening = false;
+      stream = s; track = s.getVideoTracks()[0];
+      scanning = true; cand = ""; startedAt = performance.now(); hintShown = false; frameN = 0;
+      var v = $("video");
+      v.srcObject = s; v.hidden = false; $("idle").hidden = true;
+      $("result").textContent = "";
+      tune(); updateBtn();
+      return v.play();
+    }).then(function(){
+      setStatus("Point the camera at the barcode.");
+      requestAnimationFrame(tick);
+    }).catch(function(e){
+      stopCamera();
+      var denied = e && (e.name === "NotAllowedError" || e.name === "SecurityError");
+      setStatus(denied
+        ? "Camera access was blocked. Allow it in the browser's site settings, or use Take photo."
+        : "Could not open the camera. Use Take photo or type the barcode.", true);
+    });
+  }
+
+  function tick(){
+    if (!scanning) return;
+    var v = $("video");
+    if (v.readyState >= 2 && v.videoWidth && !busy) {
+      busy = true;
+      scanFrame(v).then(handleRead).catch(function(){}).then(function(){ busy = false; });
+    }
+    if (!hintShown && performance.now() - startedAt > 8000) {
+      hintShown = true;
+      var vv = $("video");
+      setStatus("Not reading yet (camera " + vv.videoWidth + "×" + vv.videoHeight + "). Hold the barcode flat and straight, about 20 to 40 cm from a laptop camera, and move slowly back and forth until it sharpens.");
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function handleRead(res){
+    if (!scanning || !res || !validCode(res.code)) return;
+    var now = performance.now();
+    if (res.src === "n" || (res.code === cand && now - candAt < 1500)) onCode(res.code);
+    else { cand = res.code; candAt = now; }
+  }
+
+  // The whole picture is scanned, in turn at a few sizes and contrasts, so the barcode can be anywhere.
+  var NVAR = 6;
+  function variant(v, W, H, n){
+    var sx = 0, sy = 0, sw = W, sh = H, k, filt = "";
+    if (n === 0) k = Math.min(1, 1280 / W);
+    else if (n === 1) k = Math.min(1, 1920 / W);
+    else if (n === 2) { sx = W * 0.15; sy = H * 0.2; sw = W * 0.7; sh = H * 0.6; k = Math.min(2.5, 1800 / sw); }
+    else if (n === 3) { k = Math.min(1, 1280 / W); filt = "grayscale(1) contrast(2)"; }
+    else if (n === 4) { sx = W * 0.25; sy = H * 0.3; sw = W * 0.5; sh = H * 0.4; k = Math.min(4, 1800 / sw); }
+    else { sx = W * 0.15; sy = H * 0.2; sw = W * 0.7; sh = H * 0.6; k = Math.min(2.5, 1800 / sw); filt = "grayscale(1) contrast(2)"; }
+    work.width = Math.round(sw * k); work.height = Math.round(sh * k);
+    var x = work.getContext("2d", { willReadFrequently: true });
+    x.fillStyle = "#fff"; x.fillRect(0, 0, work.width, work.height);
+    x.imageSmoothingEnabled = true; x.imageSmoothingQuality = "high";
+    try { x.filter = filt || "none"; } catch (e) {}
+    x.drawImage(v, sx, sy, sw, sh, 0, 0, work.width, work.height);
+    try { x.filter = "none"; } catch (e) {}
+    return work;
+  }
+
+  function scanFrame(v){
+    var W = v.videoWidth, H = v.videoHeight;
+    var p = detector
+      ? detector.detect(v).then(function(r){ return r && r.length ? { code: r[0].rawValue, src: "n" } : null; }).catch(function(){ return null; })
+      : Promise.resolve(null);
+    return p.then(function(res){
+      if (res) return res;
+      if (!window.ZXing) return null;
+      var code = decodeCanvasZX(variant(v, W, H, frameN++ % NVAR));
+      return code ? { code: code, src: "z" } : null;
+    });
+  }
+
+  function onCode(code){
+    beep();
+    if (navigator.vibrate) { try { navigator.vibrate(60); } catch (e) {} }
+    if (stream) {
+      scanning = false;
+      try { $("video").pause(); } catch (e) {}
+      updateBtn();
+      // Release the camera if nobody scans again soon.
+      pauseTimer = setTimeout(function(){ if (!scanning) stopCamera(); }, 25000);
+    }
+    setStatus("");
+    $("code").value = code;
+    showCode(code);
+  }
+
+  /* ---------- photo fallback ---------- */
+  // Small barcodes in big photos (a bottle's back label, for example) have bars only 1 to 2 px wide.
+  // So the photo is enlarged and tried in several crops, with and without extra contrast, and rotated.
+  var CAP = 3200, pc = document.createElement("canvas");
+  function tryDecode(c){
+    var p = detector
+      ? detector.detect(c).then(function(r){ return r && r.length ? r[0].rawValue : null; }).catch(function(){ return null; })
+      : Promise.resolve(null);
+    return p.then(function(code){ return code || decodeCanvasZX(c); });
+  }
+  function renderJob(img, j, w, h2){
+    var sx = j.c[0] * w, sy = j.c[1] * h2, sw = j.c[2] * w, sh = j.c[3] * h2;
+    var dw = sw * j.s, dh = sh * j.s, k = Math.min(1, CAP / Math.max(dw, dh));
+    dw = Math.round(dw * k); dh = Math.round(dh * k);
+    pc.width = j.rot ? dh : dw; pc.height = j.rot ? dw : dh;
+    var x = pc.getContext("2d", { willReadFrequently: true });
+    x.fillStyle = "#fff"; x.fillRect(0, 0, pc.width, pc.height);
+    x.imageSmoothingEnabled = true; x.imageSmoothingQuality = "high";
+    if (j.f) x.filter = "grayscale(1) contrast(1.8)";
+    if (j.rot) {
+      x.translate(pc.width / 2, pc.height / 2); x.rotate(Math.PI / 2);
+      x.drawImage(img, sx, sy, sw, sh, -dw / 2, -dh / 2, dw, dh);
+    } else x.drawImage(img, sx, sy, sw, sh, 0, 0, dw, dh);
+    return pc;
+  }
+  function scanImageDeep(img, w, h2){
+    var crops = [[0, 0, 1, 1], [0, 0.5, 1, 0.5], [0, 0.3, 1, 0.4], [0, 0, 1, 0.5], [0, 0.7, 1, 0.3]];
+    var jobs = [];
+    [2, 3, 1, 4].forEach(function(s){
+      [false, true].forEach(function(f){
+        crops.forEach(function(c){ jobs.push({ s: s, f: f, c: c, rot: false }); });
+      });
+    });
+    [2, 3].forEach(function(s){
+      jobs.push({ s: s, f: false, c: crops[0], rot: true });
+      jobs.push({ s: s, f: true, c: crops[0], rot: true });
+    });
+    function next(i){
+      if (i >= jobs.length) return Promise.resolve(null);
+      setStatus("Reading photo… " + Math.round(i / jobs.length * 100) + "%");
+      return new Promise(function(r){ setTimeout(r, 0); })
+        .then(function(){ return tryDecode(renderJob(img, jobs[i], w, h2)); })
+        .then(function(code){ return code || next(i + 1); });
+    }
+    return next(0);
+  }
+  function decodePhoto(file){
+    setStatus("Reading photo…");
+    var load = window.createImageBitmap ? createImageBitmap(file) : new Promise(function(res, rej){
+      var img = new Image();
+      img.onload = function(){ res(img); };
+      img.onerror = rej;
+      img.src = URL.createObjectURL(file);
+    });
+    load.then(function(img){
+      var w = img.width || img.naturalWidth, hh = img.height || img.naturalHeight;
+      return scanImageDeep(img, w, hh);
+    }).then(function(code){
+      if (code) { setStatus(""); onCode(code); }
+      else setStatus("No barcode found in that photo. Try a closer, sharper photo with the bars flat and well lit, or type the digits under the barcode.", true);
+    }).catch(function(){
+      setStatus("That image could not be read.", true);
+    });
+  }
+
+  /* ---------- wiring ---------- */
+  $("start").addEventListener("click", toggleCamera);
+  $("zoom").addEventListener("click", function(){
+    if (!track || zoomLevels.length < 2) return;
+    zoomIdx = (zoomIdx + 1) % zoomLevels.length;
+    var z = zoomLevels[zoomIdx];
+    track.applyConstraints({ advanced: [{ zoom: z }] }).then(function(){
+      $("zoom").textContent = "Zoom " + Math.round(z * 10) / 10 + "×";
+    }).catch(function(){});
+  });
+  $("photoBtn").addEventListener("click", function(){ $("photo").click(); });
+  $("photo").addEventListener("change", function(e){
+    var f = e.target.files && e.target.files[0];
+    if (f) decodePhoto(f);
+    e.target.value = "";
+  });
+  $("torch").addEventListener("click", function(){
+    if (!track) return;
+    var on = $("torch").getAttribute("data-on") !== "1";
+    track.applyConstraints({ advanced: [{ torch: on }] }).then(function(){
+      $("torch").setAttribute("data-on", on ? "1" : "0");
+      $("torch").textContent = on ? "Light off" : "Light";
+    }).catch(function(){});
+  });
+  $("manual").addEventListener("submit", function(e){
+    e.preventDefault();
+    var c = digits($("code").value);
+    if (!c) { setStatus("Type the digits under the barcode.", true); return; }
+    setStatus("");
+    showCode(c);
+  });
+  document.addEventListener("visibilitychange", function(){
+    if (document.hidden) { wasOn = !!stream && scanning; if (stream) stopCamera(); }
+    else if (wasOn) { wasOn = false; startCamera(); }
+  });
+
+  /* ---------- admin: password + Excel upload ---------- */
+  var admin = false, pending = null, adminPw = "";
+
+  function setAdmin(on){
+    admin = on; pending = null;
+    if (!on) { adminPw = ""; }
+    $("result").textContent = "";
+    renderAdmin();
+  }
+
+  function renderAdmin(msg, isErr){
+    var box = $("admin");
+    box.textContent = "";
+    box.appendChild(h("h2", { text: "Admin" }));
+    if (!admin) { renderLogin(box); return; }
+
+    var file = h("input", { type: "file", id: "xlsFile", accept: ".xlsx,.xls,.csv", class: "" });
+    var mode = h("div", { class: "choice" }, [
+      h("label", {}, [h("input", { type: "radio", name: "mode", value: "merge", checked: "checked" }), document.createTextNode("Update prices and add new products")]),
+      h("label", {}, [h("input", { type: "radio", name: "mode", value: "replace" }), document.createTextNode("Replace the whole list")])
+    ]);
+    var out = h("div", { id: "xlsOut" });
+    file.addEventListener("change", function(){
+      var f = file.files && file.files[0];
+      if (f) readExcel(f, out, mode);
+    });
+    mode.addEventListener("change", function(){ if (pending) showPreview(out, mode); });
+
+    box.appendChild(h("p", { class: "notice", text: "Upload an Excel (.xlsx) or CSV file with three columns: barcode, name, price. The first sheet is used." }));
+    box.appendChild(h("div", { class: "field" }, [h("label", { for: "xlsFile", text: "Price file" }), file]));
+    box.appendChild(mode);
+    box.appendChild(out);
+    if (msg) box.appendChild(h("p", { class: "notice" + (isErr ? " err" : ""), text: msg }));
+    box.appendChild(h("div", { class: "row" }, [
+      h("button", { class: "btn small", type: "button", text: "Add one product", onclick: function(){ showForm("", null); window.scrollTo({ top: 0, behavior: "smooth" }); } }),
+      h("button", { class: "btn small", type: "button", text: "Download template", onclick: function(){ downloadSheet([["barcode", "name", "price"], [SAMPLE[0][0], SAMPLE[0][1], SAMPLE[0][2]]], "prices-template.xlsx"); } }),
+      h("button", { class: "btn small", type: "button", text: "Download current list", onclick: function(){ exportAll(); } }),
+      h("button", { class: "btn small", type: "button", text: "Sign out", onclick: function(){ setAdmin(false); } })
+    ]));
+  }
+
+  function renderLogin(box){
+    var pin = h("input", { id: "pin", type: "password", autocomplete: "current-password", placeholder: "Admin password" });
+    var err = h("p", { class: "notice err", text: "" });
+    box.appendChild(h("form", { class: "inline", onsubmit: function(e){
+      e.preventDefault();
+      var v = pin.value;
+      if (!v) { err.textContent = "Enter the admin password."; return; }
+      err.textContent = "Signing in…";
+      api("POST", "/api/admin/login", {}, v).then(function(){
+        adminPw = v;
+        setAdmin(true);
+      })
+        .catch(function(e2){ adminPw = ""; err.textContent = netMsg(e2); pin.value = ""; });
+    } }, [
+      h("div", { class: "field" }, [h("label", { for: "pin", text: "Admin password" }), pin]),
+      h("button", { class: "btn", type: "submit", text: "Sign in" })
+    ]));
+    box.appendChild(err);
+    box.appendChild(h("p", { class: "notice", text: "Only admins can change prices. Changes apply to every customer's phone." }));
+  }
+
+  function downloadSheet(rows, name){
+    if (!window.XLSX) { renderAdmin("The Excel library did not load. Check the internet connection and reload.", true); return; }
+    try {
+      var ws = XLSX.utils.aoa_to_sheet(rows);
+      ws["!cols"] = [{ wch: 16 }, { wch: 32 }, { wch: 10 }];
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Prices");
+      XLSX.writeFile(wb, name);
+    } catch (e) { renderAdmin("Could not create the file.", true); }
+  }
+
+  function cellCode(v){
+    if (typeof v === "number") return isFinite(v) ? String(Math.round(v)) : "";
+    var s = String(v).trim();
+    if (/^\d+(\.\d+)?e\+?\d+$/i.test(s)) return String(Math.round(Number(s)));
+    return digits(s.replace(/\.0+$/, ""));
+  }
+  function cellPrice(v){
+    if (typeof v === "number") return v;
+    var s = String(v).replace(/[^\d.,-]/g, "");
+    if (s.indexOf(",") !== -1 && s.indexOf(".") === -1) s = s.replace(",", ".");
+    else s = s.replace(/,/g, "");
+    return s === "" ? NaN : parseFloat(s);
+  }
+
+  function parseRows(rows){
+    var re = {
+      code: /barcode|bar code|code|ean|upc|sku|باركود|الباركود|رمز/i,
+      name: /name|product|item|description|اسم|الاسم|المنتج|الصنف|صنف/i,
+      price: /price|cost|سعر|السعر/i
+    };
+    var ci = -1, ni = -1, pi = -1, start = 0, head = rows[0] || [];
+    head.forEach(function(c, i){
+      var s = String(c);
+      if (ci < 0 && re.code.test(s)) ci = i;
+      else if (ni < 0 && re.name.test(s)) ni = i;
+      else if (pi < 0 && re.price.test(s)) pi = i;
+    });
+    if (ci >= 0 && pi >= 0) { start = 1; if (ni < 0) ni = -2; }
+    else {
+      ci = 0; ni = 1; pi = 2;
+      start = isFinite(cellPrice(head[2] === undefined ? "" : head[2])) && cellCode(head[0]) ? 0 : 1;
+    }
+    var items = [], skipped = 0;
+    for (var r = start; r < rows.length; r++) {
+      var row = rows[r];
+      if (!row || row.every(function(c){ return String(c).trim() === ""; })) continue;
+      var code = cellCode(row[ci] === undefined ? "" : row[ci]);
+      var price = cellPrice(row[pi] === undefined ? "" : row[pi]);
+      var name = ni >= 0 && row[ni] !== undefined ? String(row[ni]).trim() : "";
+      if (!code || !isFinite(price) || price < 0) { skipped++; continue; }
+      items.push({ code: code, name: name, price: Math.round(price * 100) / 100 });
+    }
+    return { items: items, skipped: skipped };
+  }
+
+  var CHUNK = 10000;
+  function fmt(n){ return Number(n).toLocaleString("en-US"); }
+
+  function exportAll(){
+    var rows = [["barcode", "name", "price"]], step = 32, total = 0;
+    function next(from){
+      if (from >= 256) { downloadSheet(rows, "prices-current.xlsx"); renderAdmin("Downloaded " + fmt(rows.length - 1) + " products."); return; }
+      renderAdmin("Preparing download… " + Math.round(from / 256 * 100) + "%");
+      api("GET", "/api/admin/export?from=" + from + "&to=" + (from + step), undefined, adminPw).then(function(j){
+        j.items.forEach(function(it){ rows.push([it.code, it.name, it.price]); });
+        next(from + step);
+      }).catch(function(e){ renderAdmin(netMsg(e), true); });
+    }
+    next(0);
+  }
+
+  // Sends the rows in batches so even 100,000 products fit through the server's size limit.
+  function sendBatches(items, base, onProgress){
+    var agg = { added: 0, changed: 0, same: 0, existing: 0, created: 0, samples: [] };
+    function go(i){
+      if (i >= items.length) return Promise.resolve(agg);
+      onProgress(Math.min(i, items.length), items.length);
+      var body = Object.assign({ items: items.slice(i, i + CHUNK) }, base);
+      return api("POST", "/api/admin/import/chunk", body, adminPw).then(function(r){
+        ["added", "changed", "same", "existing", "created"].forEach(function(k){ agg[k] += r[k]; });
+        r.samples.forEach(function(x){ if (agg.samples.length < 5) agg.samples.push(x); });
+        return go(i + CHUNK);
+      });
+    }
+    return go(0);
+  }
+
+  function readExcel(file, out, mode){
+    if (!window.XLSX) { out.textContent = ""; out.appendChild(h("p", { class: "notice err", text: "The Excel library did not load. Check the internet connection and reload." })); return; }
+    out.textContent = "";
+    out.appendChild(h("p", { class: "notice", text: "Reading the file…" }));
+    var fr = new FileReader();
+    fr.onerror = function(){ out.textContent = ""; out.appendChild(h("p", { class: "notice err", text: "That file could not be read." })); };
+    fr.onload = function(){
+      setTimeout(function(){
+        var rows;
+        try {
+          var wb = XLSX.read(fr.result, { type: "array" });
+          rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: "" });
+          pending = parseRows(rows);
+        } catch (e) {
+          pending = null; out.textContent = "";
+          out.appendChild(h("p", { class: "notice err", text: "This does not look like an Excel or CSV file." }));
+          return;
+        }
+        var mine = pending;
+        mine.stats = null;
+        sendBatches(mine.items, { dry: true }, function(a, b){
+          out.textContent = "";
+          out.appendChild(h("p", { class: "notice", text: "Comparing with the current list… " + fmt(a) + " of " + fmt(b) }));
+        }).then(function(st){
+          return api("GET", "/api/info").then(function(info){
+            if (pending !== mine) return;
+            mine.stats = st; mine.total = info.count;
+            showPreview(out, mode);
+          });
+        }).catch(function(e){ if (pending === mine) pending = null; out.textContent = ""; out.appendChild(h("p", { class: "notice err", text: netMsg(e) })); });
+      }, 30);
+    };
+    fr.readAsArrayBuffer(file);
+  }
+
+  function chosenMode(mode){
+    var r = mode.querySelector("input[name=mode]:checked");
+    return r ? r.value : "merge";
+  }
+
+  function showPreview(out, mode){
+    out.textContent = "";
+    if (!pending || !pending.stats) return;
+    var st = pending.stats, m = chosenMode(mode);
+    var removed = m === "replace" ? Math.max(0, pending.total - st.existing) : 0;
+    var box = h("div", { class: "preview" }, [
+      h("strong", { text: fmt(pending.items.length) + " valid rows" + (pending.skipped ? ", " + fmt(pending.skipped) + " skipped (missing barcode or price)" : "") }),
+      h("div", { text: fmt(st.changed) + " price changes, " + fmt(st.added) + " new products, " + fmt(st.same) + " unchanged" + (m === "replace" ? ", about " + fmt(removed) + " removed" : "") + "." })
+    ]);
+    if (st.samples.length) {
+      var ul = h("ul");
+      st.samples.forEach(function(c){ ul.appendChild(h("li", { text: c.name + ": " + CURRENCY + money(c.from) + " to " + CURRENCY + money(c.to) })); });
+      box.appendChild(ul);
+    }
+    out.appendChild(box);
+    if (!pending.items.length) return;
+    out.appendChild(h("div", { class: "row", style: "margin-top:8px" }, [
+      h("button", { class: "btn primary", type: "button", text: "Apply " + fmt(st.changed + st.added) + " changes" + (removed ? " and remove about " + fmt(removed) : ""), onclick: function(){ applyPending(m); } })
+    ]));
+  }
+
+  function applyPending(m){
+    if (!pending) return;
+    var items = pending.items;
+    renderAdmin("Starting upload…");
+    api("POST", "/api/admin/import/start", { mode: m }, adminPw).then(function(s0){
+      return sendBatches(items, { mode: m, gen: s0.gen }, function(a, b){
+        renderAdmin("Uploading… " + fmt(a) + " of " + fmt(b) + " (" + Math.round(a / b * 100) + "%). Keep this page open.");
+      }).then(function(st){
+        return api("POST", "/api/admin/import/finish", { gen: s0.gen, mode: m, created: st.created }, adminPw).then(function(f){
+          pending = null; renderList();
+          renderAdmin("Done. " + fmt(st.changed) + " prices changed, " + fmt(st.added) + " products added. " + fmt(f.total) + " products are live for all customers.");
+        });
+      });
+    }).catch(function(e){ renderAdmin(netMsg(e) + " The old list is still in use.", true); });
+  }
+
+  initDecoders();
+  renderList();
+  renderAdmin();
+  startCamera();
+})();
+</script>
+</body>
+</html>
